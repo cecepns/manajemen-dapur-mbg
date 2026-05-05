@@ -9,7 +9,7 @@ import api from '../services/api'
 import { toastConfirm } from '../utils/toastConfirm'
 
 export default function MenusPage() {
-  const { data, fetchData } = usePaginatedFetch('/menus')
+  const { data, meta, fetchData } = usePaginatedFetch('/menus')
   const kitchenOptions = useKitchenOptions()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingId, setEditingId] = useState(null)
@@ -75,6 +75,8 @@ export default function MenusPage() {
     <CrudTable
       title="Menu Mingguan"
       rows={data}
+      meta={meta}
+      onPageChange={(nextPage) => fetchData(nextPage, meta.limit)}
       columns={[
         { key: 'hari', label: 'Hari' },
         { key: 'nama_menu', label: 'Nama Menu' },

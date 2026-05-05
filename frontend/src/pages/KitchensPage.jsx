@@ -7,7 +7,7 @@ import api from '../services/api'
 import { toastConfirm } from '../utils/toastConfirm'
 
 export default function KitchensPage() {
-  const { data, fetchData } = usePaginatedFetch('/kitchens')
+  const { data, meta, fetchData } = usePaginatedFetch('/kitchens')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [form, setForm] = useState({ nama_dapur: '', lokasi: '', penanggung_jawab: '' })
@@ -58,6 +58,8 @@ export default function KitchensPage() {
     <CrudTable
       title="Manajemen Dapur"
       rows={data}
+      meta={meta}
+      onPageChange={(nextPage) => fetchData(nextPage, meta.limit)}
       columns={[
         { key: 'nama_dapur', label: 'Nama Dapur' },
         { key: 'lokasi', label: 'Lokasi' },

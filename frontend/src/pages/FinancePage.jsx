@@ -15,6 +15,7 @@ const formatRupiahInput = (value) => {
 
 export default function FinancePage() {
   const [data, setData] = useState([])
+  const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0 })
   const [monthFilter, setMonthFilter] = useState(new Date().toISOString().slice(0, 7))
   const kitchenOptions = useKitchenOptions()
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -22,7 +23,7 @@ export default function FinancePage() {
   const [isExporting, setIsExporting] = useState(false)
   const [form, setForm] = useState({ jenis: 'pengeluaran', nominal: '', keterangan: '', kitchen_id: 1, tanggal: new Date().toISOString().slice(0, 10) })
 
-  const fetchData = async (page = 1, limit = 10, customMonth = monthFilter) => {
+  const fetchData = async (page = meta.page, limit = meta.limit, customMonth = monthFilter) => {
     try {
       const params = new URLSearchParams({
         page: String(page),
@@ -31,24 +32,23 @@ export default function FinancePage() {
       if (customMonth) params.set('month', customMonth)
       const res = await api.get(`/finance?${params.toString()}`)
       setData(res.data?.data || [])
+      setMeta(res.data?.meta || { page, limit, total: 0 })
     } catch (error) {
       toast.error(error.response?.data?.message || 'Gagal memuat data keuangan')
     }
   }
 
   useEffect(() => {
-    if (kitchenOptions.length) setForm((prev) => ({ ...prev, kitchen_id: kitchenOptions[0].value }))
-  }, [kitchenOptions])
-
-  useEffect(() => {
     fetchData(1, 10, monthFilter)
-  }, [monthFilter])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const save = async (e) => {
     e.preventDefault()
     const payload = {
       ...form,
       nominal: Number(sanitizeNominal(form.nominal) || 0),
+      kitchen_id: form.kitchen_id || kitchenOptions[0]?.value || 1,
     }
     if (editingId) {
       await api.put(`/finance/${editingId}`, payload)
@@ -64,7 +64,7 @@ export default function FinancePage() {
 
   const openAddModal = () => {
     setEditingId(null)
-    setForm((prev) => ({ ...prev, nominal: '', keterangan: '' }))
+    setForm((prev) => ({ ...prev, nominal: '', keterangan: '', kitchen_id: prev.kitchen_id || kitchenOptions[0]?.value || 1 }))
     setIsModalOpen(true)
   }
 
@@ -123,6 +123,8 @@ export default function FinancePage() {
     <CrudTable
       title="Laporan Keuangan"
       rows={data}
+      meta={meta}
+      onPageChange={(nextPage) => fetchData(nextPage, meta.limit, monthFilter)}
       columns={[
         { key: 'tanggal', label: 'Tanggal' },
         { key: 'jenis', label: 'Jenis' },
@@ -134,7 +136,11 @@ export default function FinancePage() {
       <div className="flex flex-wrap items-end gap-2">
         <label className="grid gap-1 text-sm">
           <span>Filter Bulan</span>
-          <input className="rounded border p-2" type="month" value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)} />
+          <input className="rounded border p-2" type="month" value={monthFilter} onChange={(e) => {
+            const nextMonth = e.target.value
+            setMonthFilter(nextMonth)
+            fetchData(1, meta.limit, nextMonth)
+          }} />
         </label>
         <button className="rounded bg-slate-700 px-3 py-2 text-white" onClick={() => fetchData(1, 10, monthFilter)}>Terapkan Filter</button>
         <button className="rounded bg-emerald-700 px-3 py-2 text-white" onClick={downloadExcel} disabled={isExporting}>

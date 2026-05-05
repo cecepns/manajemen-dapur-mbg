@@ -9,7 +9,7 @@ import api from '../services/api'
 import { toastConfirm } from '../utils/toastConfirm'
 
 export default function UsersPage() {
-  const { data, fetchData } = usePaginatedFetch('/users')
+  const { data, meta, fetchData } = usePaginatedFetch('/users')
   const kitchenOptions = useKitchenOptions()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingId, setEditingId] = useState(null)
@@ -78,6 +78,8 @@ export default function UsersPage() {
     <CrudTable
       title="Manajemen User"
       rows={data}
+      meta={meta}
+      onPageChange={(nextPage) => fetchData(nextPage, meta.limit)}
       columns={[
         { key: 'nama', label: 'Nama' },
         { key: 'email', label: 'Email' },

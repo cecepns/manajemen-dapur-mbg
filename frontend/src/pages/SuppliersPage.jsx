@@ -8,7 +8,7 @@ import usePaginatedFetch from '../hooks/usePaginatedFetch'
 import api from '../services/api'
 
 export default function SuppliersPage() {
-  const { data, fetchData } = usePaginatedFetch('/suppliers')
+  const { data, meta, fetchData } = usePaginatedFetch('/suppliers')
   const kitchenOptions = useKitchenOptions()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingId, setEditingId] = useState(null)
@@ -54,6 +54,8 @@ export default function SuppliersPage() {
     <CrudTable
       title="Supplier"
       rows={data}
+      meta={meta}
+      onPageChange={(nextPage) => fetchData(nextPage, meta.limit)}
       columns={[
         { key: 'nama_supplier', label: 'Nama' },
         { key: 'kontak', label: 'Kontak' },

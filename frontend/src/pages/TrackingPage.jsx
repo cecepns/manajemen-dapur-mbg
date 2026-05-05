@@ -8,7 +8,7 @@ import api from '../services/api'
 import { toastConfirm } from '../utils/toastConfirm'
 
 export default function TrackingPage() {
-  const { data, fetchData } = usePaginatedFetch('/tracking/history')
+  const { data, meta, fetchData } = usePaginatedFetch('/tracking/history')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isGettingGps, setIsGettingGps] = useState(false)
   const [coords, setCoords] = useState({ latitude: '', longitude: '' })
@@ -94,6 +94,8 @@ export default function TrackingPage() {
     <CrudTable
       title="Tracking GPS"
       rows={data}
+      meta={meta}
+      onPageChange={(nextPage) => fetchData(nextPage, meta.limit)}
       columns={[
         { key: 'nama', label: 'User' },
         { key: 'latitude', label: 'Latitude' },

@@ -3,8 +3,8 @@ export default function CrudTable({ title, columns, rows, children }) {
     <section className="rounded-xl bg-white p-4 shadow">
       <h2 className="mb-4 text-lg font-semibold">{title}</h2>
       {children}
-      <div className="mt-4 overflow-x-auto">
-        <table className="min-w-full text-left text-sm">
+      <div className="mt-4 w-full overflow-x-auto">
+        <table className="min-w-[640px] text-left text-sm md:min-w-full">
           <thead className="bg-slate-100">
             <tr>
               {columns.map((column) => (

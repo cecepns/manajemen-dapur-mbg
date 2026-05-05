@@ -7,6 +7,12 @@ import FormModal from '../components/FormModal'
 import useKitchenOptions from '../hooks/useKitchenOptions'
 import api from '../services/api'
 
+const sanitizeNominal = (value) => String(value ?? '').replace(/\D/g, '')
+const formatRupiahInput = (value) => {
+  const digits = sanitizeNominal(value)
+  return digits ? Number(digits).toLocaleString('id-ID') : ''
+}
+
 export default function FinancePage() {
   const [data, setData] = useState([])
   const [monthFilter, setMonthFilter] = useState(new Date().toISOString().slice(0, 7))
@@ -14,7 +20,7 @@ export default function FinancePage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingId, setEditingId] = useState(null)
   const [isExporting, setIsExporting] = useState(false)
-  const [form, setForm] = useState({ jenis: 'pengeluaran', nominal: 0, keterangan: '', kitchen_id: 1, tanggal: new Date().toISOString().slice(0, 10) })
+  const [form, setForm] = useState({ jenis: 'pengeluaran', nominal: '', keterangan: '', kitchen_id: 1, tanggal: new Date().toISOString().slice(0, 10) })
 
   const fetchData = async (page = 1, limit = 10, customMonth = monthFilter) => {
     try {
@@ -40,11 +46,15 @@ export default function FinancePage() {
 
   const save = async (e) => {
     e.preventDefault()
+    const payload = {
+      ...form,
+      nominal: Number(sanitizeNominal(form.nominal) || 0),
+    }
     if (editingId) {
-      await api.put(`/finance/${editingId}`, form)
+      await api.put(`/finance/${editingId}`, payload)
       toast.success('Data keuangan diupdate')
     } else {
-      await api.post('/finance', form)
+      await api.post('/finance', payload)
       toast.success('Data keuangan disimpan')
     }
     setEditingId(null)
@@ -54,7 +64,7 @@ export default function FinancePage() {
 
   const openAddModal = () => {
     setEditingId(null)
-    setForm((prev) => ({ ...prev, nominal: 0, keterangan: '' }))
+    setForm((prev) => ({ ...prev, nominal: '', keterangan: '' }))
     setIsModalOpen(true)
   }
 
@@ -64,7 +74,7 @@ export default function FinancePage() {
       ...prev,
       tanggal: row.tanggal || prev.tanggal,
       jenis: row.jenis || 'pengeluaran',
-      nominal: Number(row.nominal) || 0,
+      nominal: sanitizeNominal(row.nominal),
       keterangan: row.keterangan || '',
       kitchen_id: row.kitchen_id || prev.kitchen_id,
     }))
@@ -147,7 +157,14 @@ export default function FinancePage() {
           </label>
           <label className="grid gap-1 text-sm">
             <span>Nominal</span>
-            <input className="rounded border p-2" type="number" min="0" value={form.nominal} onChange={(e) => setForm({ ...form, nominal: Number(e.target.value) })} />
+            <input
+              className="rounded border p-2"
+              type="text"
+              inputMode="numeric"
+              placeholder="Contoh: 10.000"
+              value={formatRupiahInput(form.nominal)}
+              onChange={(e) => setForm({ ...form, nominal: sanitizeNominal(e.target.value) })}
+            />
           </label>
           <label className="grid gap-1 text-sm">
             <span>Dapur</span>

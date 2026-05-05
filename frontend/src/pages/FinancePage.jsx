@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useMemo, useState } from 'react'
 import Select from 'react-select'
 import * as XLSX from 'xlsx'
 import { toast } from 'react-toastify'
@@ -38,7 +38,7 @@ export default function FinancePage() {
     }
   }
 
-  useEffect(() => {
+  useMemo(() => {
     fetchData(1, 10, monthFilter)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

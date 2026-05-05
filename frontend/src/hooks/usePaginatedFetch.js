@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import api from '../services/api'
 import { toast } from 'react-toastify'
 
@@ -6,9 +6,14 @@ export default function usePaginatedFetch(endpoint) {
   const [data, setData] = useState([])
   const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0 })
   const [loading, setLoading] = useState(false)
+  const latestMetaRef = useRef(meta)
+
+  useEffect(() => {
+    latestMetaRef.current = meta
+  }, [meta])
 
   const fetchData = useCallback(
-    async (page = meta.page, limit = meta.limit) => {
+    async (page = latestMetaRef.current.page, limit = latestMetaRef.current.limit) => {
       setLoading(true)
       try {
         const res = await api.get(`${endpoint}?page=${page}&limit=${limit}`)
@@ -20,7 +25,7 @@ export default function usePaginatedFetch(endpoint) {
         setLoading(false)
       }
     },
-    [endpoint, meta.limit, meta.page],
+    [endpoint],
   )
 
   useEffect(() => {

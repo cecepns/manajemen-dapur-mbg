@@ -6,6 +6,7 @@ import KitchensPage from '../pages/KitchensPage'
 import UsersPage from '../pages/UsersPage'
 import MenusPage from '../pages/MenusPage'
 import SuppliersPage from '../pages/SuppliersPage'
+import ItemCategoriesPage from '../pages/ItemCategoriesPage'
 import FinancePage from '../pages/FinancePage'
 import TrackingPage from '../pages/TrackingPage'
 import CourierPage from '../pages/CourierPage'
@@ -83,6 +84,7 @@ export default function AppRoutes() {
         <Route path="kitchens" element={<RoleRoute allowedRoles={['admin']}><KitchensPage /></RoleRoute>} />
         <Route path="users" element={<RoleRoute allowedRoles={['admin']}><UsersPage /></RoleRoute>} />
         <Route path="menus" element={<RoleRoute allowedRoles={['admin', 'manager', 'staff']}><MenusPage /></RoleRoute>} />
+        <Route path="item-categories" element={<RoleRoute allowedRoles={['admin', 'manager', 'staff']}><ItemCategoriesPage /></RoleRoute>} />
         <Route path="suppliers" element={<RoleRoute allowedRoles={['admin', 'manager', 'staff']}><SuppliersPage /></RoleRoute>} />
         <Route path="finance" element={<RoleRoute allowedRoles={['admin', 'manager']}><FinancePage /></RoleRoute>} />
         <Route path="tracking" element={<RoleRoute allowedRoles={['admin', 'manager', 'kurir']}><TrackingPage /></RoleRoute>} />

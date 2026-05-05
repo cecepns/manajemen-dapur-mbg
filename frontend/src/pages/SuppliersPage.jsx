@@ -9,14 +9,19 @@ import api from '../services/api'
 
 export default function SuppliersPage() {
   const { data, meta, fetchData } = usePaginatedFetch('/suppliers')
+  const { data: itemCategories, fetchData: fetchItemCategories } = usePaginatedFetch('/item-categories')
   const kitchenOptions = useKitchenOptions()
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingId, setEditingId] = useState(null)
-  const [form, setForm] = useState({ nama_supplier: '', kontak: '', kitchen_id: 1 })
+  const [form, setForm] = useState({ nama_supplier: '', kontak: '', kitchen_id: 1, item_category_ids: [] })
 
   useEffect(() => {
     if (kitchenOptions.length) setForm((prev) => ({ ...prev, kitchen_id: kitchenOptions[0].value }))
   }, [kitchenOptions])
+
+  useEffect(() => {
+    fetchItemCategories(1, 100)
+  }, [fetchItemCategories])
 
   const save = async (e) => {
     e.preventDefault()
@@ -27,7 +32,7 @@ export default function SuppliersPage() {
       await api.post('/suppliers', form)
       toast.success('Supplier ditambahkan')
     }
-    setForm({ ...form, nama_supplier: '', kontak: '' })
+    setForm((prev) => ({ ...prev, nama_supplier: '', kontak: '', item_category_ids: [] }))
     setEditingId(null)
     setIsModalOpen(false)
     fetchData()
@@ -35,7 +40,7 @@ export default function SuppliersPage() {
 
   const openAddModal = () => {
     setEditingId(null)
-    setForm((prev) => ({ ...prev, nama_supplier: '', kontak: '' }))
+    setForm((prev) => ({ ...prev, nama_supplier: '', kontak: '', item_category_ids: [] }))
     setIsModalOpen(true)
   }
 
@@ -46,6 +51,7 @@ export default function SuppliersPage() {
       nama_supplier: row.nama_supplier || '',
       kontak: row.kontak || '',
       kitchen_id: row.kitchen_id || prev.kitchen_id,
+      item_category_ids: row.item_category_ids ? String(row.item_category_ids).split(',').map(Number).filter(Boolean) : [],
     }))
     setIsModalOpen(true)
   }
@@ -58,6 +64,7 @@ export default function SuppliersPage() {
       onPageChange={(nextPage) => fetchData(nextPage, meta.limit)}
       columns={[
         { key: 'nama_supplier', label: 'Nama' },
+        { key: 'jenis_barang', label: 'Jenis Barang' },
         { key: 'kontak', label: 'Kontak' },
         { key: 'kitchen_name', label: 'Dapur' },
         { key: 'id', label: 'Aksi', render: (row) => <button className="rounded bg-amber-600 px-2 py-1 text-white" onClick={() => openEditModal(row)}>Edit</button> },
@@ -73,6 +80,17 @@ export default function SuppliersPage() {
           <label className="grid gap-1 text-sm">
             <span>Kontak</span>
             <input className="rounded border p-2" value={form.kontak} onChange={(e) => setForm({ ...form, kontak: e.target.value })} />
+          </label>
+          <label className="grid gap-1 text-sm">
+            <span>Master Barang</span>
+            <Select
+              className="text-sm"
+              isMulti
+              options={itemCategories.map((item) => ({ value: item.id, label: item.nama_barang }))}
+              value={itemCategories.filter((item) => form.item_category_ids.includes(item.id)).map((item) => ({ value: item.id, label: item.nama_barang }))}
+              onChange={(selected) => setForm({ ...form, item_category_ids: (selected || []).map((item) => item.value) })}
+              placeholder="Pilih barang supplier"
+            />
           </label>
           <label className="grid gap-1 text-sm">
             <span>Dapur</span>

@@ -62,7 +62,10 @@ async function initDatabase() {
   await pool.query(`CREATE TABLE IF NOT EXISTS menus (id INT AUTO_INCREMENT PRIMARY KEY, hari VARCHAR(50), nama_menu VARCHAR(120), deskripsi TEXT, estimasi_porsi INT, kitchen_id INT NULL, waktu_persiapan INT DEFAULT 0, waktu_memasak INT DEFAULT 0, waktu_distribusi INT DEFAULT 0, total_waktu INT DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, FOREIGN KEY (kitchen_id) REFERENCES kitchens(id) ON DELETE SET NULL)`)
   await pool.query(`CREATE TABLE IF NOT EXISTS menu_kitchens (id INT AUTO_INCREMENT PRIMARY KEY, menu_id INT NOT NULL, kitchen_id INT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, UNIQUE KEY uniq_menu_kitchen (menu_id, kitchen_id), FOREIGN KEY (menu_id) REFERENCES menus(id) ON DELETE CASCADE, FOREIGN KEY (kitchen_id) REFERENCES kitchens(id) ON DELETE CASCADE)`)
   await pool.query(`INSERT IGNORE INTO menu_kitchens (menu_id, kitchen_id) SELECT id, kitchen_id FROM menus WHERE kitchen_id IS NOT NULL`)
-  await pool.query(`CREATE TABLE IF NOT EXISTS suppliers (id INT AUTO_INCREMENT PRIMARY KEY, nama_supplier VARCHAR(120), kontak VARCHAR(120), kitchen_id INT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, FOREIGN KEY (kitchen_id) REFERENCES kitchens(id) ON DELETE CASCADE)`)
+  await pool.query(`CREATE TABLE IF NOT EXISTS suppliers (id INT AUTO_INCREMENT PRIMARY KEY, nama_supplier VARCHAR(120), jenis_barang VARCHAR(255) NULL, kontak VARCHAR(120), kitchen_id INT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, FOREIGN KEY (kitchen_id) REFERENCES kitchens(id) ON DELETE CASCADE)`)
+  await pool.query('ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS jenis_barang VARCHAR(255) NULL AFTER nama_supplier')
+  await pool.query(`CREATE TABLE IF NOT EXISTS item_categories (id INT AUTO_INCREMENT PRIMARY KEY, nama_barang VARCHAR(120) NOT NULL, kitchen_id INT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, UNIQUE KEY uniq_item_category_name_kitchen (nama_barang, kitchen_id), FOREIGN KEY (kitchen_id) REFERENCES kitchens(id) ON DELETE CASCADE)`)
+  await pool.query(`CREATE TABLE IF NOT EXISTS supplier_item_categories (id INT AUTO_INCREMENT PRIMARY KEY, supplier_id INT NOT NULL, item_category_id INT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, UNIQUE KEY uniq_supplier_item_category (supplier_id, item_category_id), FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE, FOREIGN KEY (item_category_id) REFERENCES item_categories(id) ON DELETE CASCADE)`)
   await pool.query(`CREATE TABLE IF NOT EXISTS finance (id INT AUTO_INCREMENT PRIMARY KEY, jenis ENUM('pemasukan','pengeluaran'), nominal DECIMAL(14,2), keterangan VARCHAR(255), tanggal DATE, kitchen_id INT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, FOREIGN KEY (kitchen_id) REFERENCES kitchens(id) ON DELETE CASCADE)`)
   await pool.query(`CREATE TABLE IF NOT EXISTS gps_tracking (id INT AUTO_INCREMENT PRIMARY KEY, latitude DECIMAL(10,7), longitude DECIMAL(10,7), timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP, user_id INT, kitchen_id INT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, FOREIGN KEY (user_id) REFERENCES users(id), FOREIGN KEY (kitchen_id) REFERENCES kitchens(id))`)
   await pool.query(`CREATE TABLE IF NOT EXISTS deliveries (id INT AUTO_INCREMENT PRIMARY KEY, destination VARCHAR(255), status ENUM('pending','on delivery','delivered') DEFAULT 'pending', courier_id INT, kitchen_id INT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, FOREIGN KEY (courier_id) REFERENCES users(id), FOREIGN KEY (kitchen_id) REFERENCES kitchens(id) ON DELETE CASCADE)`)
@@ -168,6 +171,8 @@ async function paginatedEntity(req, res, table, permission, join = '', select = 
   return paged(res, rows, { page, limit, total: countRows[0].total })
 }
 
+const normalizeIds = (value) => (Array.isArray(value) ? value.map(Number).filter(Boolean) : [])
+
 app.get('/kitchens', authMiddleware, async (req, res) => {
   try {
     if (isAdmin(req.user)) return paginatedEntity(req, res, 'kitchens', 'dashboard')
@@ -181,6 +186,37 @@ app.post('/kitchens', authMiddleware, async (req, res) => {
     const { nama_dapur, lokasi, penanggung_jawab } = req.body
     await pool.query('INSERT INTO kitchens (nama_dapur,lokasi,penanggung_jawab) VALUES (?,?,?)', [nama_dapur, lokasi, penanggung_jawab])
     res.status(201).json({ message: 'Dapur dibuat' })
+  } catch (error) { res.status(500).json({ message: error.message }) }
+})
+
+app.get('/item-categories', authMiddleware, permissionMiddleware('supplier'), async (req, res) => {
+  try {
+    const { page, limit, offset } = pagination(req)
+    const where = isAdmin(req.user) ? '' : 'WHERE ic.kitchen_id=?'
+    const params = isAdmin(req.user) ? [limit, offset] : [req.user.kitchen_id, limit, offset]
+    const [rows] = await pool.query(`SELECT ic.*, k.nama_dapur kitchen_name FROM item_categories ic LEFT JOIN kitchens k ON k.id=ic.kitchen_id ${where} ORDER BY ic.id DESC LIMIT ? OFFSET ?`, params)
+    const [countRows] = await pool.query(`SELECT COUNT(*) total FROM item_categories ${isAdmin(req.user) ? '' : 'WHERE kitchen_id=?'}`, isAdmin(req.user) ? [] : [req.user.kitchen_id])
+    paged(res, rows, { page, limit, total: countRows[0].total })
+  } catch (error) { res.status(500).json({ message: error.message }) }
+})
+app.post('/item-categories', authMiddleware, permissionMiddleware('supplier'), async (req, res) => {
+  try {
+    const { nama_barang, kitchen_id } = req.body
+    await pool.query('INSERT INTO item_categories (nama_barang,kitchen_id) VALUES (?,?)', [nama_barang, isAdmin(req.user) ? kitchen_id : req.user.kitchen_id])
+    res.status(201).json({ message: 'Barang dibuat' })
+  } catch (error) { res.status(500).json({ message: error.message }) }
+})
+app.put('/item-categories/:id', authMiddleware, permissionMiddleware('supplier'), async (req, res) => {
+  try {
+    const { nama_barang, kitchen_id } = req.body
+    await pool.query(`UPDATE item_categories SET nama_barang=?, kitchen_id=? WHERE id=? ${isAdmin(req.user) ? '' : 'AND kitchen_id=?'}`, isAdmin(req.user) ? [nama_barang, kitchen_id, req.params.id] : [nama_barang, req.user.kitchen_id, req.params.id, req.user.kitchen_id])
+    res.json({ message: 'Barang diupdate' })
+  } catch (error) { res.status(500).json({ message: error.message }) }
+})
+app.delete('/item-categories/:id', authMiddleware, permissionMiddleware('supplier'), async (req, res) => {
+  try {
+    await pool.query(`DELETE FROM item_categories WHERE id=? ${isAdmin(req.user) ? '' : 'AND kitchen_id=?'}`, isAdmin(req.user) ? [req.params.id] : [req.params.id, req.user.kitchen_id])
+    res.json({ message: 'Barang dihapus' })
   } catch (error) { res.status(500).json({ message: error.message }) }
 })
 app.put('/kitchens/:id', authMiddleware, async (req, res) => {
@@ -266,22 +302,68 @@ app.delete('/menus/:id', authMiddleware, permissionMiddleware('menu'), async (re
 
 app.get('/suppliers', authMiddleware, permissionMiddleware('supplier'), async (req, res) => {
   try {
-    await paginatedEntity(req, res, 'suppliers', 'supplier', 'LEFT JOIN kitchens k ON k.id=suppliers.kitchen_id', 'suppliers.*,k.nama_dapur kitchen_name')
+    const { page, limit, offset } = pagination(req)
+    const where = isAdmin(req.user) ? '' : 'WHERE s.kitchen_id=?'
+    const params = isAdmin(req.user) ? [limit, offset] : [req.user.kitchen_id, limit, offset]
+    const [rows] = await pool.query(
+      `SELECT s.id,s.nama_supplier,s.kontak,s.kitchen_id,k.nama_dapur kitchen_name,
+       GROUP_CONCAT(DISTINCT ic.id ORDER BY ic.id) item_category_ids,
+       GROUP_CONCAT(DISTINCT ic.nama_barang ORDER BY ic.nama_barang SEPARATOR ', ') jenis_barang
+       FROM suppliers s
+       LEFT JOIN kitchens k ON k.id=s.kitchen_id
+       LEFT JOIN supplier_item_categories sic ON sic.supplier_id=s.id
+       LEFT JOIN item_categories ic ON ic.id=sic.item_category_id
+       ${where}
+       GROUP BY s.id
+       ORDER BY s.id DESC
+       LIMIT ? OFFSET ?`,
+      params,
+    )
+    const [countRows] = await pool.query(`SELECT COUNT(*) total FROM suppliers ${isAdmin(req.user) ? '' : 'WHERE kitchen_id=?'}`, isAdmin(req.user) ? [] : [req.user.kitchen_id])
+    paged(res, rows, { page, limit, total: countRows[0].total })
   } catch (error) { res.status(500).json({ message: error.message }) }
 })
 app.post('/suppliers', authMiddleware, permissionMiddleware('supplier'), async (req, res) => {
+  const connection = await pool.getConnection()
   try {
-    const { nama_supplier, kontak, kitchen_id } = req.body
-    await pool.query('INSERT INTO suppliers (nama_supplier,kontak,kitchen_id) VALUES (?,?,?)', [nama_supplier, kontak, isAdmin(req.user) ? kitchen_id : req.user.kitchen_id])
+    await connection.beginTransaction()
+    const { nama_supplier, kontak, kitchen_id, item_category_ids } = req.body
+    const resolvedKitchenId = isAdmin(req.user) ? kitchen_id : req.user.kitchen_id
+    const categoryIds = normalizeIds(item_category_ids)
+    const [result] = await connection.query('INSERT INTO suppliers (nama_supplier,kontak,kitchen_id) VALUES (?,?,?)', [nama_supplier, kontak, resolvedKitchenId])
+    if (categoryIds.length) {
+      const values = categoryIds.map((categoryId) => [result.insertId, categoryId])
+      await connection.query('INSERT INTO supplier_item_categories (supplier_id,item_category_id) VALUES ?', [values])
+    }
+    await connection.commit()
     res.status(201).json({ message: 'Supplier dibuat' })
-  } catch (error) { res.status(500).json({ message: error.message }) }
+  } catch (error) {
+    await connection.rollback()
+    res.status(500).json({ message: error.message })
+  } finally {
+    connection.release()
+  }
 })
 app.put('/suppliers/:id', authMiddleware, permissionMiddleware('supplier'), async (req, res) => {
+  const connection = await pool.getConnection()
   try {
-    const { nama_supplier, kontak, kitchen_id } = req.body
-    await pool.query(`UPDATE suppliers SET nama_supplier=?, kontak=?, kitchen_id=? WHERE id=? ${isAdmin(req.user) ? '' : 'AND kitchen_id=?'}`, isAdmin(req.user) ? [nama_supplier, kontak, kitchen_id, req.params.id] : [nama_supplier, kontak, req.user.kitchen_id, req.params.id, req.user.kitchen_id])
+    await connection.beginTransaction()
+    const { nama_supplier, kontak, kitchen_id, item_category_ids } = req.body
+    const categoryIds = normalizeIds(item_category_ids)
+    await connection.query(`UPDATE suppliers SET nama_supplier=?, kontak=?, kitchen_id=? WHERE id=? ${isAdmin(req.user) ? '' : 'AND kitchen_id=?'}`, isAdmin(req.user) ? [nama_supplier, kontak, kitchen_id, req.params.id] : [nama_supplier, kontak, req.user.kitchen_id, req.params.id, req.user.kitchen_id])
+    await connection.query('DELETE FROM supplier_item_categories WHERE supplier_id=?', [req.params.id])
+    if (categoryIds.length) {
+      const values = categoryIds.map((categoryId) => [Number(req.params.id), categoryId])
+      await connection.query('INSERT INTO supplier_item_categories (supplier_id,item_category_id) VALUES ?', [values])
+    }
+    await connection.commit()
     res.json({ message: 'Supplier diupdate' })
-  } catch (error) { res.status(500).json({ message: error.message }) }
+  } catch (error) {
+    await connection.rollback()
+    res.status(500).json({ message: error.message })
+  } finally {
+    connection.release()
+  }
 })
 
 app.get('/finance', authMiddleware, permissionMiddleware('keuangan'), async (req, res) => {

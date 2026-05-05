@@ -49,7 +49,7 @@ export default function AppLayout() {
         closeMobile={() => setMobileOpen(false)}
         roleName={user.role_name}
       />
-      <main className="min-h-screen flex-1 p-4 md:p-6">
+      <main className="min-h-screen min-w-0 flex-1 overflow-x-hidden p-4 md:p-6">
         <div className="mb-4 flex items-center justify-between">
           <button className="rounded bg-slate-800 p-2 text-white md:hidden" onClick={() => setMobileOpen(true)} aria-label="Buka menu">
             <Menu size={18} />

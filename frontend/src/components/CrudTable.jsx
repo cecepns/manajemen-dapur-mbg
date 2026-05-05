@@ -1,6 +1,6 @@
 export default function CrudTable({ title, columns, rows, children }) {
   return (
-    <section className="rounded-xl bg-white p-4 shadow">
+    <section className="min-w-0 rounded-xl bg-white p-4 shadow">
       <h2 className="mb-4 text-lg font-semibold">{title}</h2>
       {children}
       <div className="mt-4 w-full overflow-x-auto">

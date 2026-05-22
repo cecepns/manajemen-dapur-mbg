@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Select from 'react-select'
 import { toast } from 'react-toastify'
 import CrudTable from '../components/CrudTable'
@@ -11,9 +11,21 @@ import { toastConfirm } from '../utils/toastConfirm'
 export default function UsersPage() {
   const { data, meta, fetchData } = usePaginatedFetch('/users')
   const kitchenOptions = useKitchenOptions()
+  const [roles, setRoles] = useState([])
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingId, setEditingId] = useState(null)
-  const [form, setForm] = useState({ nama: '', email: '', password: '', role_id: 3, kitchen_id: 1, status_aktif: 1 })
+  const [form, setForm] = useState({ nama: '', email: '', password: '', role_id: '', kitchen_id: 1, status_aktif: 1 })
+
+  useEffect(() => {
+    api.get('/roles').then((res) => {
+      const list = res.data?.data || []
+      setRoles(list)
+      if (!form.role_id && list.length) {
+        const staffRole = list.find((r) => r.name === 'Staff')
+        setForm((prev) => ({ ...prev, role_id: staffRole?.id || list[0].id }))
+      }
+    }).catch(() => toast.error('Gagal memuat daftar role'))
+  }, [])
 
   const save = async (e) => {
     e.preventDefault()
@@ -21,6 +33,7 @@ export default function UsersPage() {
       if (editingId) {
         await api.put(`/users/${editingId}`, {
           nama: form.nama,
+          email: form.email,
           role_id: form.role_id,
           kitchen_id: form.kitchen_id || kitchenOptions[0]?.value || 1,
           status_aktif: form.status_aktif,
@@ -34,7 +47,7 @@ export default function UsersPage() {
         })
         toast.success('User ditambahkan')
       }
-      setForm({ ...form, nama: '', email: '', password: '' })
+      setForm((prev) => ({ ...prev, nama: '', email: '', password: '' }))
       setEditingId(null)
       setIsModalOpen(false)
       fetchData()
@@ -56,7 +69,15 @@ export default function UsersPage() {
 
   const openAddModal = () => {
     setEditingId(null)
-    setForm((prev) => ({ ...prev, nama: '', email: '', password: '', kitchen_id: kitchenOptions[0]?.value || 1 }))
+    const staffRole = roles.find((r) => r.name === 'Staff')
+    setForm((prev) => ({
+      ...prev,
+      nama: '',
+      email: '',
+      password: '',
+      role_id: staffRole?.id || roles[0]?.id || '',
+      kitchen_id: kitchenOptions[0]?.value || 1,
+    }))
     setIsModalOpen(true)
   }
 
@@ -67,7 +88,7 @@ export default function UsersPage() {
       nama: row.nama || '',
       email: row.email || '',
       password: '',
-      role_id: Number(row.role_id) || 3,
+      role_id: Number(row.role_id) || prev.role_id,
       kitchen_id: row.kitchen_id || prev.kitchen_id,
       status_aktif: row.status_aktif ? 1 : 0,
     }))
@@ -103,20 +124,22 @@ export default function UsersPage() {
         <form onSubmit={save} className="grid gap-3 md:grid-cols-2">
           <label className="grid gap-1 text-sm md:col-span-2">
             <span>Nama</span>
-            <input className="rounded border p-2" value={form.nama} onChange={(e) => setForm({ ...form, nama: e.target.value })} />
+            <input className="rounded border p-2" value={form.nama} onChange={(e) => setForm({ ...form, nama: e.target.value })} required />
           </label>
           <label className="grid gap-1 text-sm">
             <span>Email</span>
-            <input className="rounded border p-2 disabled:bg-slate-100" value={form.email} disabled={Boolean(editingId)} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            <input className="rounded border p-2" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
           </label>
           <label className="grid gap-1 text-sm">
             <span>{editingId ? 'Password Baru (opsional)' : 'Password'}</span>
-            <input className="rounded border p-2" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder={editingId ? 'Kosongkan jika tidak diubah' : ''} />
+            <input className="rounded border p-2" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} placeholder={editingId ? 'Kosongkan jika tidak diubah' : ''} required={!editingId} />
           </label>
           <label className="grid gap-1 text-sm">
             <span>Role</span>
-            <select className="rounded border p-2" value={form.role_id} onChange={(e) => setForm({ ...form, role_id: Number(e.target.value) })}>
-              <option value={1}>Admin</option><option value={2}>Manager</option><option value={3}>Staff</option><option value={4}>Kurir</option>
+            <select className="rounded border p-2" value={form.role_id} onChange={(e) => setForm({ ...form, role_id: Number(e.target.value) })} required>
+              {roles.map((role) => (
+                <option key={role.id} value={role.id}>{role.name}</option>
+              ))}
             </select>
           </label>
           <label className="grid gap-1 text-sm">

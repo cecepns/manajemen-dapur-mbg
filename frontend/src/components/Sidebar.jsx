@@ -10,24 +10,27 @@ import {
   MapPinned,
   Menu,
   X,
+  BarChart3,
 } from 'lucide-react'
 import logo from '../assets/logo.png'
+import { MENU_ACCESS, normalizeRole } from '../utils/roles'
 
 const menus = [
-  { to: '/', label: 'Dashboard', icon: House, roles: ['admin', 'manager', 'staff'] },
-  { to: '/kitchens', label: 'Dapur', icon: CookingPot, roles: ['admin'] },
-  { to: '/users', label: 'User', icon: Users, roles: ['admin'] },
-  { to: '/menus', label: 'Menu', icon: UtensilsCrossed, roles: ['admin', 'manager', 'staff'] },
-  { to: '/item-categories', label: 'Master Barang', icon: Boxes, roles: ['admin', 'manager', 'staff'] },
-  { to: '/suppliers', label: 'Supplier', icon: Truck, roles: ['admin', 'manager', 'staff'] },
-  { to: '/finance', label: 'Keuangan', icon: Wallet, roles: ['admin', 'manager'] },
-  { to: '/tracking', label: 'Tracking', icon: MapPinned, roles: ['admin', 'manager', 'kurir'] },
-  { to: '/courier', label: 'Kurir', icon: Truck, roles: ['admin', 'manager', 'kurir'] },
+  { to: '/', label: 'Dashboard', icon: House },
+  { to: '/kpi', label: 'KPI', icon: BarChart3 },
+  { to: '/kitchens', label: 'Dapur', icon: CookingPot },
+  { to: '/users', label: 'User', icon: Users },
+  { to: '/menus', label: 'Menu Mingguan', icon: UtensilsCrossed },
+  { to: '/item-categories', label: 'Master Barang', icon: Boxes },
+  { to: '/suppliers', label: 'Supplier', icon: Truck },
+  { to: '/finance', label: 'Keuangan', icon: Wallet },
+  { to: '/tracking', label: 'Tracking', icon: MapPinned },
+  { to: '/courier', label: 'Kurir', icon: Truck },
 ]
 
 export default function Sidebar({ collapsed, isMobileOpen, toggleCollapse, closeMobile, roleName }) {
-  const role = String(roleName || '').toLowerCase()
-  const allowedMenus = menus.filter((item) => item.roles.includes(role))
+  const role = normalizeRole(roleName)
+  const allowedMenus = menus.filter((item) => canAccessRoute(role, item.to))
 
   return (
     <>
@@ -67,4 +70,9 @@ export default function Sidebar({ collapsed, isMobileOpen, toggleCollapse, close
       </aside>
     </>
   )
+}
+
+function canAccessRoute(role, path) {
+  const allowed = MENU_ACCESS[path] || []
+  return allowed.includes(role)
 }

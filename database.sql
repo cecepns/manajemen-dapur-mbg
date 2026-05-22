@@ -61,6 +61,12 @@ CREATE TABLE IF NOT EXISTS menu_kitchens (
 CREATE TABLE IF NOT EXISTS suppliers (
   id INT AUTO_INCREMENT PRIMARY KEY,
   nama_supplier VARCHAR(120),
+  cp_penanggung_jawab VARCHAR(120),
+  alamat TEXT,
+  nama_barang VARCHAR(255),
+  jumlah_barang VARCHAR(100),
+  jadwal_pengiriman VARCHAR(255),
+  tanggal_akhir_kontrak DATE,
   kontak VARCHAR(120),
   kitchen_id INT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -78,6 +84,32 @@ CREATE TABLE IF NOT EXISTS finance (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   FOREIGN KEY (kitchen_id) REFERENCES kitchens(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS invoices (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  nama_perusahaan VARCHAR(255),
+  ditujukan_kepada VARCHAR(255),
+  invoice_number VARCHAR(100),
+  total_payment DECIMAL(14,2) DEFAULT 0,
+  amount_paid DECIMAL(14,2) DEFAULT 0,
+  keterangan_tambahan TEXT,
+  status_invoice ENUM('draft','pending','paid','cancelled') DEFAULT 'pending',
+  kitchen_id INT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (kitchen_id) REFERENCES kitchens(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS invoice_items (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  invoice_id INT NOT NULL,
+  item_name VARCHAR(255),
+  quantity DECIMAL(10,2) DEFAULT 0,
+  rate DECIMAL(14,2) DEFAULT 0,
+  amount DECIMAL(14,2) DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS gps_tracking (

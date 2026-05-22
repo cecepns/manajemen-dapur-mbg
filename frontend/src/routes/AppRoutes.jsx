@@ -10,18 +10,15 @@ import ItemCategoriesPage from '../pages/ItemCategoriesPage'
 import FinancePage from '../pages/FinancePage'
 import TrackingPage from '../pages/TrackingPage'
 import CourierPage from '../pages/CourierPage'
+import KpiPage from '../pages/KpiPage'
+import { getDefaultRouteByRole, MENU_ACCESS, normalizeRole } from '../utils/roles'
 
 function getRole() {
   try {
-    return String(JSON.parse(localStorage.getItem('user') || '{}')?.role_name || '').toLowerCase()
+    return normalizeRole(JSON.parse(localStorage.getItem('user') || '{}')?.role_name)
   } catch {
     return ''
   }
-}
-
-function getDefaultRouteByRole(role) {
-  if (role === 'kurir') return '/courier'
-  return '/'
 }
 
 function isTokenValid() {
@@ -46,9 +43,10 @@ function PublicRoute({ children }) {
   return isTokenValid() ? <Navigate to={getDefaultRouteByRole(role)} replace /> : children
 }
 
-function RoleRoute({ allowedRoles, children }) {
+function RoleRoute({ path, children }) {
   const role = getRole()
-  if (!allowedRoles.includes(role)) {
+  const allowed = MENU_ACCESS[path] || []
+  if (!allowed.includes(role)) {
     return <Navigate to={getDefaultRouteByRole(role)} replace />
   }
   return children
@@ -73,22 +71,16 @@ export default function AppRoutes() {
           </ProtectedRoute>
         )}
       >
-        <Route
-          index
-          element={(
-            <RoleRoute allowedRoles={['admin', 'manager', 'staff']}>
-              <DashboardPage />
-            </RoleRoute>
-          )}
-        />
-        <Route path="kitchens" element={<RoleRoute allowedRoles={['admin']}><KitchensPage /></RoleRoute>} />
-        <Route path="users" element={<RoleRoute allowedRoles={['admin']}><UsersPage /></RoleRoute>} />
-        <Route path="menus" element={<RoleRoute allowedRoles={['admin', 'manager', 'staff']}><MenusPage /></RoleRoute>} />
-        <Route path="item-categories" element={<RoleRoute allowedRoles={['admin', 'manager', 'staff']}><ItemCategoriesPage /></RoleRoute>} />
-        <Route path="suppliers" element={<RoleRoute allowedRoles={['admin', 'manager', 'staff']}><SuppliersPage /></RoleRoute>} />
-        <Route path="finance" element={<RoleRoute allowedRoles={['admin', 'manager']}><FinancePage /></RoleRoute>} />
-        <Route path="tracking" element={<RoleRoute allowedRoles={['admin', 'manager', 'kurir']}><TrackingPage /></RoleRoute>} />
-        <Route path="courier" element={<RoleRoute allowedRoles={['admin', 'manager', 'kurir']}><CourierPage /></RoleRoute>} />
+        <Route index element={<RoleRoute path="/"><DashboardPage /></RoleRoute>} />
+        <Route path="kpi" element={<RoleRoute path="/kpi"><KpiPage /></RoleRoute>} />
+        <Route path="kitchens" element={<RoleRoute path="/kitchens"><KitchensPage /></RoleRoute>} />
+        <Route path="users" element={<RoleRoute path="/users"><UsersPage /></RoleRoute>} />
+        <Route path="menus" element={<RoleRoute path="/menus"><MenusPage /></RoleRoute>} />
+        <Route path="item-categories" element={<RoleRoute path="/item-categories"><ItemCategoriesPage /></RoleRoute>} />
+        <Route path="suppliers" element={<RoleRoute path="/suppliers"><SuppliersPage /></RoleRoute>} />
+        <Route path="finance" element={<RoleRoute path="/finance"><FinancePage /></RoleRoute>} />
+        <Route path="tracking" element={<RoleRoute path="/tracking"><TrackingPage /></RoleRoute>} />
+        <Route path="courier" element={<RoleRoute path="/courier"><CourierPage /></RoleRoute>} />
       </Route>
     </Routes>
   )

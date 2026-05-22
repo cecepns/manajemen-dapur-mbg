@@ -4,6 +4,7 @@ import { toast } from 'react-toastify'
 import FormModal from '../components/FormModal'
 import useKitchenOptions from '../hooks/useKitchenOptions'
 import api from '../services/api'
+import { normalizeRole, ROLES } from '../utils/roles'
 import { toastConfirm } from '../utils/toastConfirm'
 
 export default function CourierPage() {
@@ -22,8 +23,8 @@ export default function CourierPage() {
       return {}
     }
   }, [])
-  const role = String(user.role_name || '').toLowerCase()
-  const canCreate = role === 'admin' || role === 'manager'
+  const role = normalizeRole(user.role_name)
+  const canCreate = role === ROLES.ADMIN || role === ROLES.KEPALA_SPPG || role === ROLES.STAFF
 
   const load = async (searchQuery = debouncedSearch) => {
     try {
@@ -59,7 +60,7 @@ export default function CourierPage() {
     setForm({
       destination: '',
       courier_id: couriers[0]?.id || null,
-      kitchen_id: role === 'manager' ? user.kitchen_id : (kitchenOptions[0]?.value || null),
+      kitchen_id: role === ROLES.STAFF ? user.kitchen_id : (kitchenOptions[0]?.value || null),
       status: 'pending',
     })
     setIsModalOpen(true)
@@ -134,7 +135,7 @@ export default function CourierPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-xl font-semibold">Pengiriman Kurir</h1>
         <div className="flex flex-wrap gap-2">
-          {role === 'admin' && <button className="rounded bg-orange-600 px-3 py-2 text-white" onClick={resetAllStatus}>Reset Semua Status</button>}
+          {(role === ROLES.ADMIN || role === ROLES.KEPALA_SPPG) && <button className="rounded bg-orange-600 px-3 py-2 text-white" onClick={resetAllStatus}>Reset Semua Status</button>}
           {canCreate && <button className="rounded bg-emerald-600 px-3 py-2 text-white" onClick={openAddModal}>Tambah Pengiriman</button>}
           <button className="rounded bg-cyan-600 px-3 py-2 text-white" onClick={() => load(debouncedSearch)}>Muat Data</button>
         </div>
@@ -222,7 +223,7 @@ export default function CourierPage() {
           <label className="grid gap-1 text-sm">
             <span>Dapur</span>
             <Select
-              isDisabled={role === 'manager'}
+              isDisabled={role === ROLES.STAFF}
               options={kitchenOptions}
               value={kitchenOptions.find((opt) => opt.value === form.kitchen_id) || null}
               onChange={(selected) => setForm({ ...form, kitchen_id: selected?.value || null })}

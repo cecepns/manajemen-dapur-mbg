@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-toastify'
+import { getDefaultRouteByRole, normalizeRole } from '../utils/roles'
 import api from '../services/api'
 import logo from '../assets/logo.png'
 
@@ -17,9 +18,8 @@ export default function LoginPage() {
       localStorage.setItem('token', res.data.token)
       localStorage.setItem('user', JSON.stringify(res.data.user))
       toast.success('Login berhasil')
-      const role = String(res.data?.user?.role_name || '').toLowerCase()
-      if (role === 'kurir') navigate('/courier')
-      else navigate('/')
+      const role = normalizeRole(res.data?.user?.role_name)
+      navigate(getDefaultRouteByRole(role))
     } catch (error) {
       toast.error(error.response?.data?.message || 'Login gagal')
     } finally {

@@ -26,7 +26,6 @@ export function getDefaultRouteByRole(roleName) {
 
 export const MENU_ACCESS = {
   '/': [ROLES.ADMIN, ROLES.KEPALA_SPPG],
-  '/kpi': [ROLES.ADMIN, ROLES.KEPALA_SPPG],
   '/kitchens': [ROLES.ADMIN, ROLES.KEPALA_SPPG, ROLES.AHLI_GIZI],
   '/users': [ROLES.ADMIN, ROLES.KEPALA_SPPG],
   '/menus': [ROLES.ADMIN, ROLES.KEPALA_SPPG, ROLES.AHLI_GIZI],

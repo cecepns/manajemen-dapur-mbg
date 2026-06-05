@@ -20,8 +20,8 @@ const pool = mysql.createPool({
 })
 
 const permissionMap = {
-  admin: ['dashboard', 'menu', 'supplier', 'keuangan', 'tracking', 'user management', 'kitchen', 'kpi', 'courier'],
-  'kepala sppg': ['dashboard', 'menu', 'supplier', 'keuangan', 'tracking', 'user management', 'kitchen', 'kpi', 'courier'],
+  admin: ['dashboard', 'menu', 'supplier', 'keuangan', 'tracking', 'user management', 'kitchen', 'courier'],
+  'kepala sppg': ['dashboard', 'menu', 'supplier', 'keuangan', 'tracking', 'user management', 'kitchen', 'courier'],
   keuangan: ['keuangan'],
   'ahli gizi': ['kitchen', 'menu', 'supplier'],
   staff: ['courier'],
@@ -63,10 +63,254 @@ const permissionMiddleware = (permission) => (req, res, next) => {
   return res.status(403).json({ message: 'Akses ditolak' })
 }
 
+const WEEKDAY_NAMES = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat']
+const DAY_TO_NAME = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
+const PRODUCTION_TARGET_MINUTES = 180
+const KPI_PERIODS = ['harian', 'mingguan', 'bulanan']
+
+const formatDate = (date) => {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+const parseRefDate = (raw) => {
+  if (!raw) return new Date()
+  if (/^\d{4}-\d{2}$/.test(raw)) return new Date(`${raw}-01T12:00:00`)
+  return new Date(`${raw}T12:00:00`)
+}
+
+const getWeekdayName = (date) => DAY_TO_NAME[date.getDay()]
+
+const getLastWeekday = (date) => {
+  const result = new Date(date)
+  while (result.getDay() === 0 || result.getDay() === 6) {
+    result.setDate(result.getDate() - 1)
+  }
+  return result
+}
+
+const getKpiPeriodRange = (period = 'mingguan', refDateInput) => {
+  const periodNorm = KPI_PERIODS.includes(period) ? period : 'mingguan'
+  const ref = parseRefDate(refDateInput)
+
+  if (periodNorm === 'harian') {
+    const target = ref.getDay() === 0 || ref.getDay() === 6 ? getLastWeekday(ref) : ref
+    const date = formatDate(target)
+    return {
+      period: 'harian',
+      label: 'Harian',
+      start: date,
+      end: date,
+      dates: [{ name: getWeekdayName(target), date }],
+    }
+  }
+
+  if (periodNorm === 'mingguan') {
+    const day = ref.getDay()
+    const monday = new Date(ref)
+    const diffToMonday = day === 0 ? -6 : 1 - day
+    monday.setDate(ref.getDate() + diffToMonday)
+    const dates = WEEKDAY_NAMES.map((name, index) => {
+      const current = new Date(monday)
+      current.setDate(monday.getDate() + index)
+      return { name, date: formatDate(current) }
+    })
+    return {
+      period: 'mingguan',
+      label: 'Mingguan',
+      start: formatDate(monday),
+      end: dates[dates.length - 1].date,
+      dates,
+    }
+  }
+
+  const year = ref.getFullYear()
+  const month = ref.getMonth()
+  const lastDay = new Date(year, month + 1, 0).getDate()
+  const dates = []
+  for (let day = 1; day <= lastDay; day += 1) {
+    const current = new Date(year, month, day)
+    const dow = current.getDay()
+    if (dow >= 1 && dow <= 5) {
+      dates.push({ name: getWeekdayName(current), date: formatDate(current) })
+    }
+  }
+  return {
+    period: 'bulanan',
+    label: 'Bulanan',
+    start: formatDate(new Date(year, month, 1)),
+    end: formatDate(new Date(year, month, lastDay)),
+    dates,
+  }
+}
+
+const clampScore = (value) => Math.max(0, Math.min(100, Math.round(value)))
+
+const buildKpiItem = ({ id, title, value, display, target, targetLabel, description, trend, detail, met }) => ({
+  id,
+  title,
+  value: clampScore(value),
+  display,
+  target,
+  targetLabel,
+  description,
+  trend: trend || (value >= target ? 'up' : 'down'),
+  met: met !== undefined ? met : value >= target,
+  detail,
+})
+
+async function calculateKpi(user, period = 'mingguan', refDate) {
+  const range = getKpiPeriodRange(period, refDate)
+  const { start, end, dates, label: periodLabel } = range
+  const totalDays = dates.length || 1
+  const kitchenId = user.kitchen_id
+  const scoped = !isFullAccess(user)
+  const kitchenClause = scoped ? 'AND kitchen_id=?' : ''
+  const kitchenParams = scoped ? [kitchenId] : []
+
+  const deliveryDayScores = []
+  for (const { date } of dates) {
+    const [rows] = await pool.query(
+      `SELECT status FROM deliveries WHERE DATE(created_at)=? ${kitchenClause}`,
+      [date, ...kitchenParams],
+    )
+    if (!rows.length) {
+      deliveryDayScores.push(null)
+      continue
+    }
+    const allDelivered = rows.every((row) => row.status === 'delivered')
+    deliveryDayScores.push(allDelivered ? 1 : 0)
+  }
+  const deliveryEvaluated = deliveryDayScores.filter((score) => score !== null)
+  const deliveryPassed = deliveryEvaluated.filter(Boolean).length
+  const deliveryScore = deliveryEvaluated.length
+    ? clampScore((deliveryPassed / deliveryEvaluated.length) * 100)
+    : 0
+
+  const [menuRows] = await pool.query(
+    `SELECT m.hari, m.total_waktu
+     FROM menus m
+     ${scoped ? 'JOIN menu_kitchens mk ON mk.menu_id=m.id AND mk.kitchen_id=?' : ''}
+     WHERE m.hari IN ('Senin','Selasa','Rabu','Kamis','Jumat')`,
+    scoped ? [kitchenId] : [],
+  )
+  const productionDayScores = dates.map(({ name }) => {
+    const dayMenus = menuRows.filter((row) => row.hari === name && Number(row.total_waktu) > 0)
+    if (!dayMenus.length) return 0
+    return dayMenus.every((row) => Number(row.total_waktu) <= PRODUCTION_TARGET_MINUTES) ? 1 : 0
+  })
+  const productionPassed = productionDayScores.filter(Boolean).length
+  const productionScore = clampScore((productionPassed / totalDays) * 100)
+
+  const financeDayScores = []
+  for (const { date } of dates) {
+    const [rows] = await pool.query(
+      `SELECT jenis, nominal, keterangan FROM finance WHERE tanggal=? ${kitchenClause}`,
+      [date, ...kitchenParams],
+    )
+    const hasIncome = rows.some((row) => row.jenis === 'pemasukan' && Number(row.nominal) > 0 && String(row.keterangan || '').trim())
+    const hasExpense = rows.some((row) => row.jenis === 'pengeluaran' && Number(row.nominal) > 0 && String(row.keterangan || '').trim())
+    financeDayScores.push(hasIncome && hasExpense ? 1 : 0)
+  }
+  const financePassed = financeDayScores.filter(Boolean).length
+  const financeScore = clampScore((financePassed / totalDays) * 100)
+
+  const [userRows] = await pool.query(
+    `SELECT u.id, u.last_login,
+      EXISTS (
+        SELECT 1 FROM gps_tracking gt
+        WHERE gt.user_id=u.id AND DATE(gt.timestamp) BETWEEN ? AND ?
+        ${scoped ? 'AND gt.kitchen_id=?' : ''}
+      ) has_activity
+     FROM users u
+     WHERE u.status_aktif=1 ${scoped ? 'AND u.kitchen_id=?' : ''}`,
+    scoped ? [start, end, kitchenId, kitchenId] : [start, end],
+  )
+  const totalUsers = userRows.length
+  const activeUsers = userRows.filter((row) => {
+    const loggedIn = row.last_login
+      && new Date(row.last_login) >= new Date(`${start}T00:00:00`)
+      && new Date(row.last_login) <= new Date(`${end}T23:59:59`)
+    return loggedIn || row.has_activity
+  }).length
+  const usageScore = totalUsers ? clampScore((activeUsers / totalUsers) * 100) : 0
+
+  const satisfactionRating = Number((((deliveryScore + productionScore + financeScore + usageScore) / 4) / 100 * 5).toFixed(1))
+  const satisfactionScore = clampScore((satisfactionRating / 5) * 100)
+
+  const periodScope = period === 'harian' ? 'hari ini' : period === 'bulanan' ? 'bulan ini' : 'minggu ini'
+  const dayUnit = period === 'harian' ? 'hari' : 'hari kerja'
+
+  return {
+    period: range.period,
+    period_label: periodLabel,
+    kpi: [
+      buildKpiItem({
+        id: 'delivery',
+        title: 'Penurunan Keterlambatan Distribusi',
+        value: deliveryScore,
+        display: `${deliveryScore}%`,
+        target: 30,
+        targetLabel: 'Target: ≥ 30% pengiriman lancar',
+        description: 'Persentase periode dengan pengiriman selesai tanpa keterlambatan',
+        detail: deliveryEvaluated.length
+          ? `${deliveryPassed} dari ${deliveryEvaluated.length} ${dayUnit} pengiriman lancar (${periodScope})`
+          : `Belum ada data pengiriman ${periodScope}`,
+      }),
+      buildKpiItem({
+        id: 'production',
+        title: 'Peningkatan Efisiensi Waktu Produksi',
+        value: productionScore,
+        display: `${productionScore}%`,
+        target: 25,
+        targetLabel: `Target: ≥ 25% menu selesai ≤ ${PRODUCTION_TARGET_MINUTES} menit`,
+        description: 'Kecepatan produksi menu berdasarkan total waktu persiapan, masak, dan distribusi',
+        detail: `${productionPassed} dari ${totalDays} ${dayUnit} menu memenuhi target waktu`,
+      }),
+      buildKpiItem({
+        id: 'finance',
+        title: 'Akurasi Laporan Keuangan',
+        value: financeScore,
+        display: `${financeScore}%`,
+        target: 95,
+        targetLabel: 'Target: ≥ 95% laporan keuangan lengkap',
+        description: 'Kelengkapan pemasukan & pengeluaran tercatat per hari kerja',
+        detail: `${financePassed} dari ${totalDays} ${dayUnit} laporan keuangan lengkap`,
+      }),
+      buildKpiItem({
+        id: 'usage',
+        title: 'Tingkat Penggunaan Aplikasi',
+        value: usageScore,
+        display: `${usageScore}%`,
+        target: 85,
+        targetLabel: `Target: ≥ 85% pengguna aktif ${periodScope}`,
+        description: 'Proporsi user aktif berdasarkan login atau aktivitas tracking',
+        detail: `${activeUsers} dari ${totalUsers} user aktif`,
+      }),
+      buildKpiItem({
+        id: 'satisfaction',
+        title: 'Kepuasan Pengguna Sistem',
+        value: satisfactionScore,
+        display: `${satisfactionRating} / 5`,
+        target: 90,
+        targetLabel: 'Target: ≥ 4.5 dari 5 tingkat kepuasan pengguna',
+        description: 'Rata-rata skor dari 4 indikator KPI operasional di atas',
+        detail: `Rata-rata ${satisfactionRating} dari 5`,
+        trend: satisfactionRating >= 4.5 ? 'up' : 'down',
+        met: satisfactionRating >= 4.5,
+      }),
+    ],
+    period_range: { start, end },
+  }
+}
+
 async function initDatabase() {
   await pool.query(`CREATE TABLE IF NOT EXISTS roles (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(50) UNIQUE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)`)
   await pool.query(`CREATE TABLE IF NOT EXISTS kitchens (id INT AUTO_INCREMENT PRIMARY KEY, nama_dapur VARCHAR(120), lokasi VARCHAR(255), penanggung_jawab VARCHAR(120), created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)`)
-  await pool.query(`CREATE TABLE IF NOT EXISTS users (id INT AUTO_INCREMENT PRIMARY KEY, nama VARCHAR(120), email VARCHAR(120) UNIQUE, password VARCHAR(255), role_id INT, kitchen_id INT NULL, status_aktif TINYINT DEFAULT 1, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, FOREIGN KEY (role_id) REFERENCES roles(id), FOREIGN KEY (kitchen_id) REFERENCES kitchens(id) ON DELETE SET NULL)`)
+  await pool.query(`CREATE TABLE IF NOT EXISTS users (id INT AUTO_INCREMENT PRIMARY KEY, nama VARCHAR(120), email VARCHAR(120) UNIQUE, password VARCHAR(255), role_id INT, kitchen_id INT NULL, status_aktif TINYINT DEFAULT 1, last_login TIMESTAMP NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, FOREIGN KEY (role_id) REFERENCES roles(id), FOREIGN KEY (kitchen_id) REFERENCES kitchens(id) ON DELETE SET NULL)`)
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP NULL')
   await pool.query(`CREATE TABLE IF NOT EXISTS menus (id INT AUTO_INCREMENT PRIMARY KEY, hari VARCHAR(50), nama_menu VARCHAR(120), deskripsi TEXT, estimasi_porsi INT, kitchen_id INT NULL, waktu_persiapan INT DEFAULT 0, waktu_memasak INT DEFAULT 0, waktu_distribusi INT DEFAULT 0, total_waktu INT DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, FOREIGN KEY (kitchen_id) REFERENCES kitchens(id) ON DELETE SET NULL)`)
   await pool.query(`CREATE TABLE IF NOT EXISTS menu_kitchens (id INT AUTO_INCREMENT PRIMARY KEY, menu_id INT NOT NULL, kitchen_id INT NOT NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, UNIQUE KEY uniq_menu_kitchen (menu_id, kitchen_id), FOREIGN KEY (menu_id) REFERENCES menus(id) ON DELETE CASCADE, FOREIGN KEY (kitchen_id) REFERENCES kitchens(id) ON DELETE CASCADE)`)
   await pool.query(`INSERT IGNORE INTO menu_kitchens (menu_id, kitchen_id) SELECT id, kitchen_id FROM menus WHERE kitchen_id IS NOT NULL`)
@@ -105,6 +349,7 @@ app.post('/auth/login', async (req, res) => {
     if (!rows.length) return res.status(401).json({ message: 'Email tidak ditemukan' })
     const valid = await bcrypt.compare(password, rows[0].password)
     if (!valid) return res.status(401).json({ message: 'Password salah' })
+    await pool.query('UPDATE users SET last_login=NOW() WHERE id=?', [rows[0].id])
     const user = { id: rows[0].id, nama: rows[0].nama, email, role_id: rows[0].role_id, role_name: rows[0].role_name, kitchen_id: rows[0].kitchen_id }
     res.json({ token: signToken(user), user })
   } catch (error) {
@@ -121,7 +366,21 @@ app.get('/dashboard', authMiddleware, permissionMiddleware('dashboard'), async (
     const [[u]] = await pool.query(`SELECT COUNT(*) total_users FROM users ${kitchenFilter}`, params)
     const [[c]] = await pool.query(`SELECT COUNT(*) total_couriers FROM users u JOIN roles r ON r.id=u.role_id WHERE r.name='Kurir' ${isFullAccess(req.user) ? '' : 'AND u.kitchen_id=?'}`, params)
     const [[f]] = await pool.query(`SELECT COALESCE(SUM(nominal),0) total_expense FROM finance WHERE jenis='pengeluaran' ${isFullAccess(req.user) ? '' : 'AND kitchen_id=?'}`, params)
-    res.json({ data: { ...k, ...u, ...c, ...f } })
+    const period = String(req.query.period || 'mingguan').toLowerCase()
+    const refDate = req.query.date || null
+    const kpiResult = await calculateKpi(req.user, period, refDate)
+    res.json({
+      data: {
+        ...k,
+        ...u,
+        ...c,
+        ...f,
+        kpi: kpiResult.kpi,
+        kpi_period: kpiResult.period,
+        kpi_period_label: kpiResult.period_label,
+        period_range: kpiResult.period_range,
+      },
+    })
   } catch (error) {
     res.status(500).json({ message: error.message })
   }
@@ -505,6 +764,7 @@ app.post('/tracking/update-location', authMiddleware, permissionMiddleware('trac
   try {
     const { latitude, longitude } = req.body
     await pool.query('INSERT INTO gps_tracking (latitude,longitude,user_id,kitchen_id) VALUES (?,?,?,?)', [latitude, longitude, req.user.id, req.user.kitchen_id])
+    await pool.query('UPDATE users SET last_login=NOW() WHERE id=?', [req.user.id])
     res.json({ message: 'Lokasi diperbarui' })
   } catch (error) { res.status(500).json({ message: error.message }) }
 })

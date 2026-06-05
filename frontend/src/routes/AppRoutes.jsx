@@ -10,7 +10,6 @@ import ItemCategoriesPage from '../pages/ItemCategoriesPage'
 import FinancePage from '../pages/FinancePage'
 import TrackingPage from '../pages/TrackingPage'
 import CourierPage from '../pages/CourierPage'
-import KpiPage from '../pages/KpiPage'
 import { getDefaultRouteByRole, MENU_ACCESS, normalizeRole } from '../utils/roles'
 
 function getRole() {
@@ -72,7 +71,6 @@ export default function AppRoutes() {
         )}
       >
         <Route index element={<RoleRoute path="/"><DashboardPage /></RoleRoute>} />
-        <Route path="kpi" element={<RoleRoute path="/kpi"><KpiPage /></RoleRoute>} />
         <Route path="kitchens" element={<RoleRoute path="/kitchens"><KitchensPage /></RoleRoute>} />
         <Route path="users" element={<RoleRoute path="/users"><UsersPage /></RoleRoute>} />
         <Route path="menus" element={<RoleRoute path="/menus"><MenusPage /></RoleRoute>} />

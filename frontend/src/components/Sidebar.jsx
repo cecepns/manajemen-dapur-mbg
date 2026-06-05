@@ -10,14 +10,12 @@ import {
   MapPinned,
   Menu,
   X,
-  BarChart3,
 } from 'lucide-react'
-import logo from '../assets/logo.png'
+import logo from '../assets/logo.jpeg'
 import { MENU_ACCESS, normalizeRole } from '../utils/roles'
 
 const menus = [
   { to: '/', label: 'Dashboard', icon: House },
-  { to: '/kpi', label: 'KPI', icon: BarChart3 },
   { to: '/kitchens', label: 'Dapur', icon: CookingPot },
   { to: '/users', label: 'User', icon: Users },
   { to: '/menus', label: 'Menu Mingguan', icon: UtensilsCrossed },

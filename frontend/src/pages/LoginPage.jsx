@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from 'react-toastify'
 import { getDefaultRouteByRole, normalizeRole } from '../utils/roles'
 import api from '../services/api'
-import logo from '../assets/logo.png'
+import logo from '../assets/logo.jpeg'
 
 export default function LoginPage() {
   const [form, setForm] = useState({ email: '', password: '' })

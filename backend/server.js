@@ -65,7 +65,7 @@ const permissionMiddleware = (permission) => (req, res, next) => {
 
 const WEEKDAY_NAMES = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat']
 const DAY_TO_NAME = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
-const PRODUCTION_TARGET_MINUTES = 180
+const PRODUCTION_TARGET_MINUTES = 270
 const KPI_PERIODS = ['harian', 'mingguan', 'bulanan']
 
 const formatDate = (date) => {
@@ -265,7 +265,7 @@ async function calculateKpi(user, period = 'mingguan', refDate) {
         value: productionScore,
         display: `${productionScore}%`,
         target: 25,
-        targetLabel: `Target: ≥ 25% menu selesai ≤ ${PRODUCTION_TARGET_MINUTES} menit`,
+        targetLabel: 'Target: ≥ 25% menu selesai ≤ 4,5 jam (270 menit)',
         description: 'Kecepatan produksi menu berdasarkan total waktu persiapan, masak, dan distribusi',
         detail: `${productionPassed} dari ${totalDays} ${dayUnit} menu memenuhi target waktu`,
       }),

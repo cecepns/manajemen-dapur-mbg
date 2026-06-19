@@ -1,3 +1,4 @@
+import { LocateFixed } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import Select from 'react-select'
 import { toast } from 'react-toastify'
@@ -11,7 +12,9 @@ export default function CourierPage() {
   const [deliveries, setDeliveries] = useState([])
   const [couriers, setCouriers] = useState([])
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const kitchenOptions = useKitchenOptions()
+  const [isLocationModalOpen, setIsLocationModalOpen] = useState(false)
+  const [isGettingGps, setIsGettingGps] = useState(false)
+  const [coords, setCoords] = useState({ latitude: '', longitude: '' })
   const [search, setSearch] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [form, setForm] = useState({ destination: '', courier_id: null, kitchen_id: null, status: 'pending' })
@@ -25,6 +28,9 @@ export default function CourierPage() {
   }, [])
   const role = normalizeRole(user.role_name)
   const canCreate = role === ROLES.ADMIN || role === ROLES.KEPALA_SPPG || role === ROLES.STAFF
+  const canUpdateLocation = role === ROLES.KURIR || role === ROLES.STAFF
+  const needsKitchenOptions = role === ROLES.ADMIN || role === ROLES.KEPALA_SPPG
+  const kitchenOptions = useKitchenOptions({ enabled: needsKitchenOptions })
 
   const load = async (searchQuery = debouncedSearch) => {
     try {
@@ -75,6 +81,51 @@ export default function CourierPage() {
       load(debouncedSearch)
     } catch (error) {
       toast.error(error.response?.data?.message || 'Gagal membuat pengiriman')
+    }
+  }
+
+  const useMyLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error('Browser tidak mendukung GPS')
+      return
+    }
+    setIsGettingGps(true)
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setCoords({
+          latitude: String(position.coords.latitude),
+          longitude: String(position.coords.longitude),
+        })
+        setIsGettingGps(false)
+        toast.success('Lokasi berhasil diambil')
+      },
+      (error) => {
+        setIsGettingGps(false)
+        if (error.code === error.PERMISSION_DENIED) {
+          toast.error('Izin lokasi ditolak. Aktifkan izin lokasi di browser.')
+        } else {
+          toast.error('Gagal mengambil lokasi GPS')
+        }
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    )
+  }
+
+  const sendLocation = async () => {
+    if (!coords.latitude || !coords.longitude) {
+      toast.error('Lokasi belum diisi')
+      return
+    }
+    try {
+      await api.post('/tracking/update-location', {
+        latitude: Number(coords.latitude),
+        longitude: Number(coords.longitude),
+      })
+      toast.success('Lokasi berhasil diperbarui')
+      setIsLocationModalOpen(false)
+      load(debouncedSearch)
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Gagal memperbarui lokasi')
     }
   }
 
@@ -135,11 +186,40 @@ export default function CourierPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-xl font-semibold">Pengiriman Kurir</h1>
         <div className="flex flex-wrap gap-2">
-          {(role === ROLES.ADMIN || role === ROLES.KEPALA_SPPG) && <button className="rounded bg-orange-600 px-3 py-2 text-white" onClick={resetAllStatus}>Reset Semua Status</button>}
-          {canCreate && <button className="rounded bg-emerald-600 px-3 py-2 text-white" onClick={openAddModal}>Tambah Pengiriman</button>}
-          <button className="rounded bg-cyan-600 px-3 py-2 text-white" onClick={() => load(debouncedSearch)}>Muat Data</button>
+          {canUpdateLocation && (
+            <button
+              className="flex items-center gap-2 rounded bg-emerald-600 px-3 py-2 text-white"
+              onClick={() => {
+                setCoords({ latitude: '', longitude: '' })
+                setIsLocationModalOpen(true)
+              }}
+            >
+              <LocateFixed size={16} />
+              Update Lokasi
+            </button>
+          )}
+          {(role === ROLES.ADMIN || role === ROLES.KEPALA_SPPG) && (
+            <button className="rounded bg-orange-600 px-3 py-2 text-white" onClick={resetAllStatus}>
+              Reset Semua Status
+            </button>
+          )}
+          {canCreate && (
+            <button className="rounded bg-emerald-600 px-3 py-2 text-white" onClick={openAddModal}>
+              Tambah Pengiriman
+            </button>
+          )}
+          <button className="rounded bg-cyan-600 px-3 py-2 text-white" onClick={() => load(debouncedSearch)}>
+            Muat Data
+          </button>
         </div>
       </div>
+
+      {canUpdateLocation && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          Perbarui lokasi GPS Anda sebelum dan selama pengantaran agar status pengiriman dapat dipantau secara real-time.
+        </div>
+      )}
+
       <div className="rounded-xl bg-white p-4 shadow">
         <div className="mb-4 md:max-w-md">
           <label className="grid gap-1 text-sm">
@@ -205,6 +285,7 @@ export default function CourierPage() {
           </table>
         </div>
       </div>
+
       <FormModal open={isModalOpen} title="Tambah Pengiriman" onClose={() => setIsModalOpen(false)}>
         <form onSubmit={createDelivery} className="grid gap-3">
           <label className="grid gap-1 text-sm">
@@ -220,18 +301,44 @@ export default function CourierPage() {
               placeholder="Pilih kurir"
             />
           </label>
-          <label className="grid gap-1 text-sm">
-            <span>Dapur</span>
-            <Select
-              isDisabled={role === ROLES.STAFF}
-              options={kitchenOptions}
-              value={kitchenOptions.find((opt) => opt.value === form.kitchen_id) || null}
-              onChange={(selected) => setForm({ ...form, kitchen_id: selected?.value || null })}
-              placeholder="Pilih dapur"
-            />
-          </label>
+          {needsKitchenOptions && (
+            <label className="grid gap-1 text-sm">
+              <span>Dapur</span>
+              <Select
+                options={kitchenOptions}
+                value={kitchenOptions.find((opt) => opt.value === form.kitchen_id) || null}
+                onChange={(selected) => setForm({ ...form, kitchen_id: selected?.value || null })}
+                placeholder="Pilih dapur"
+              />
+            </label>
+          )}
           <button className="rounded bg-cyan-600 p-2 text-white">Simpan Pengiriman</button>
         </form>
+      </FormModal>
+
+      <FormModal open={isLocationModalOpen} title="Update Lokasi GPS" onClose={() => setIsLocationModalOpen(false)}>
+        <div className="grid gap-3">
+          <button
+            type="button"
+            className="flex items-center justify-center gap-2 rounded bg-slate-700 p-2 text-white"
+            onClick={useMyLocation}
+            disabled={isGettingGps}
+          >
+            <LocateFixed size={16} />
+            {isGettingGps ? 'Mengambil Lokasi...' : 'Gunakan Lokasi Saya'}
+          </button>
+          <label className="grid gap-1 text-sm">
+            <span>Latitude</span>
+            <input className="rounded border p-2" value={coords.latitude} onChange={(e) => setCoords({ ...coords, latitude: e.target.value })} />
+          </label>
+          <label className="grid gap-1 text-sm">
+            <span>Longitude</span>
+            <input className="rounded border p-2" value={coords.longitude} onChange={(e) => setCoords({ ...coords, longitude: e.target.value })} />
+          </label>
+          <button type="button" className="rounded bg-cyan-600 p-2 text-white" onClick={sendLocation}>
+            Simpan Lokasi
+          </button>
+        </div>
       </FormModal>
     </div>
   )
